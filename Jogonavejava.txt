@@ -1,0 +1,368 @@
+Main.java
+package visao;
+
+import modelo.*;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+
+public class Main extends JFrame {
+    private String jogadorNome;
+    private NaveEspacial nave;
+    private final ArrayList<Inimigo> inimigos = new ArrayList<>();
+    private final ArrayList<Tiro> tiros = new ArrayList<>();
+    private ArrayList<Estrela> estrelas = new ArrayList<>();
+    private final JPanel painel;
+    private boolean jogoAtivo = true;
+    private int pontuacao = 0;
+    private static final int LIMITE_INIMIGOS = 20;
+
+    public Main() {
+        jogadorNome = JOptionPane.showInputDialog("Digite seu nome:");
+        setTitle("Jogo de Nave Espacial - Piloto: " + jogadorNome);
+        setSize(800, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        setResizable(false);
+
+        painel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(Color.BLACK);
+                g.fillRect(0, 0, getWidth(), getHeight());
+
+                g.setColor(Color.WHITE);
+                for (Estrela estrela : estrelas) {
+                    g.fillOval(estrela.getX(), estrela.getY(), 3, 3);
+                }
+
+                if (jogoAtivo && nave != null) {
+                    g.setColor(nave.getCor());
+                    g.fillPolygon(nave.getXPoints(), nave.getYPoints(), 3);
+                }
+
+                g.setColor(Color.YELLOW);
+                for (Tiro tiro : tiros) {
+                    g.fillRect(tiro.getPosX(), tiro.getPosY(), 5, 10);
+                }
+
+                for (Inimigo inimigo : inimigos) {
+                    g.setColor(inimigo.getTipo() == 0 ? Color.GRAY : Color.RED);
+                    g.fillRect(inimigo.getPosX(), inimigo.getPosY(), 30, 30);
+                }
+
+                g.setColor(Color.WHITE);
+                g.drawString("Pontuação: " + pontuacao, 10, 20);
+            }
+        };
+
+        add(painel);
+        iniciarNave();
+        iniciarAmbiente();
+        configurarControles();
+        iniciarMovimentacao();
+        setVisible(true);
+    }
+
+    private void iniciarNave() {
+        String escolha = JOptionPane.showInputDialog("Escolha sua nave:\n1 - Ataque\n2 - Defesa\n3 - Exploradora");
+        switch (escolha) {
+            case "1" -> nave = new NaveAtaque(375, 500);
+            case "2" -> nave = new NaveDefesa(375, 500);
+            case "3" -> nave = new NaveExploradora(375, 500);
+            default -> nave = new NaveAtaque(375, 500);
+        }
+    }
+
+    private void iniciarAmbiente() {
+        estrelas = new ArrayList<>();
+
+        for (int i = 0; i < 50; i++) {
+            estrelas.add(new Estrela(getWidth()));
+        }
+
+        Timer ambienteTimer = new Timer(50, e -> {
+            for (Estrela estrela : estrelas) {
+                estrela.mover();
+            }
+            painel.repaint();
+        });
+
+        ambienteTimer.start();
+    }
+
+    private void configurarControles() {
+        addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (jogoAtivo && nave != null) {
+                    switch (e.getKeyCode()) {
+                        case KeyEvent.VK_A -> nave.mover('L');
+                        case KeyEvent.VK_D -> nave.mover('R');
+                        case KeyEvent.VK_W -> nave.mover('U');
+                        case KeyEvent.VK_S -> nave.mover('D');
+                        case KeyEvent.VK_SPACE -> tiros.add(new Tiro(nave.getPosX() + 22, nave.getPosY()));
+                    }
+                    repaint();
+                }
+            }
+        });
+    }
+
+    private void iniciarMovimentacao() {
+        Timer timer = new Timer(50, e -> {
+            if (jogoAtivo) {
+                nave.avancar();
+
+                // Movendo inimigos e removendo os que saíram da tela
+                Iterator<Inimigo> iterInimigos = inimigos.iterator();
+                while (iterInimigos.hasNext()) {
+                    Inimigo inimigo = iterInimigos.next();
+                    inimigo.mover();
+                    if (inimigo.getPosY() > getHeight()) iterInimigos.remove();
+                }
+
+                // Movendo tiros e verificando colisões
+                Iterator<Tiro> iterTiros = tiros.iterator();
+                while (iterTiros.hasNext()) {
+                    Tiro tiro = iterTiros.next();
+                    tiro.mover();
+
+                    Iterator<Inimigo> iterColisao = inimigos.iterator();
+                    while (iterColisao.hasNext()) {
+                        Inimigo inimigo = iterColisao.next();
+                        if (Math.abs(tiro.getPosX() - inimigo.getPosX()) < 30 &&
+                                Math.abs(tiro.getPosY() - inimigo.getPosY()) < 30) {
+                            iterColisao.remove();
+                            iterTiros.remove();
+                            pontuacao += 10;
+                            break;
+                        }
+                    }
+                    if (tiro.getPosY() < 0) iterTiros.remove();
+                }
+
+                // Gerando inimigos até um limite máximo
+                if (Math.random() < 0.03 && inimigos.size() < LIMITE_INIMIGOS) {
+                    inimigos.add(new Inimigo(getWidth()));
+                }
+
+                // **Fim do jogo apenas com colisão**
+                for (Inimigo inimigo : inimigos) {
+                    if (Math.abs(inimigo.getPosX() - nave.getPosX()) < 30 &&
+                            Math.abs(inimigo.getPosY() - nave.getPosY()) < 30) {
+                        jogoAtivo = false;
+                        JOptionPane.showMessageDialog(null, "Game Over!\nJogador: " + jogadorNome + "\nPontuação: " + pontuacao);
+                        System.exit(0);
+                    }
+                }
+
+                pontuacao++;
+                repaint();
+            }
+        });
+
+        timer.start();
+    }
+
+    public static void main(String[] args) {
+        new Main();
+    }
+}
+
+
+
+NaveEspacial.java
+package modelo;
+
+import java.awt.*;
+
+public abstract class NaveEspacial {
+    protected int posX, posY;
+    protected int velocidade;
+    protected final int deslocamentoAutomatico = 1;
+
+    public NaveEspacial(int posX, int posY, int velocidade) {
+        this.posX = posX;
+        this.posY = posY;
+        this.velocidade = velocidade;
+    }
+
+    public void mover(char direcao) {
+        switch (direcao) {
+            case 'L' -> posX -= velocidade;
+            case 'R' -> posX += velocidade;
+            case 'U' -> posY -= velocidade;
+            case 'D' -> posY += velocidade;
+        }
+    }
+
+    public void avancar() {
+        posY -= deslocamentoAutomatico;
+    }
+
+    // Criando métodos getter para acessar corretamente as posições
+    public int getPosX() {
+        return posX;
+    }
+
+    public int getPosY() {
+        return posY;
+    }
+
+    public abstract Color getCor();
+    public abstract int[] getXPoints();
+    public abstract int[] getYPoints();
+}
+
+
+
+NaveAtaque.java
+package modelo;
+
+import java.awt.Color;
+
+public class NaveAtaque extends NaveEspacial {
+    public NaveAtaque(int posX, int posY) {
+        super(posX, posY, 5);
+    }
+
+    public Color getCor() {
+        return Color.WHITE;
+    }
+
+    public int[] getXPoints() {
+        return new int[]{posX, posX + 25, posX + 50};
+    }
+
+    public int[] getYPoints() {
+        return new int[]{posY + 50, posY, posY + 50};
+    }
+}
+
+
+NaveDefesa.java
+package modelo;
+
+import java.awt.Color;
+
+public class NaveDefesa extends NaveEspacial {
+    public NaveDefesa(int posX, int posY) {
+        super(posX, posY, 3);
+    }
+
+    public Color getCor() {
+        return Color.BLUE;
+    }
+
+    public int[] getXPoints() {
+        return new int[]{posX, posX + 30, posX + 60};
+    }
+
+    public int[] getYPoints() {
+        return new int[]{posY + 50, posY, posY + 50};
+    }
+}
+
+
+NaveExploradora.java
+package modelo;
+
+import java.awt.Color;
+
+public class NaveExploradora extends NaveEspacial {
+    public NaveExploradora(int posX, int posY) {
+        super(posX, posY, 4); // Nave mais ágil que as outras
+    }
+
+    public Color getCor() {
+        return Color.GREEN;
+    }
+
+    public int[] getXPoints() {
+        return new int[]{posX, posX + 20, posX + 40};
+    }
+
+    public int[] getYPoints() {
+        return new int[]{posY + 50, posY, posY + 50};
+    }
+}
+
+
+
+Inimigo.java
+package modelo;
+
+import java.util.Random;
+
+public class Inimigo {
+    private int posX, posY, velocidade;
+    private final int tipo; // 0 = meteoro, 1 = nave inimiga
+
+    public Inimigo(int larguraTela) {
+        Random random = new Random();
+        this.tipo = random.nextInt(2);
+        this.posX = random.nextInt(larguraTela - 50);
+        this.posY = 0;
+        this.velocidade = tipo == 0 ? 3 : 4;
+    }
+
+    public void mover() {
+        posY += velocidade;
+    }
+
+    public int getPosX() { return posX; }
+    public int getPosY() { return posY; }
+    public int getTipo() { return tipo; }
+}
+
+
+
+
+Tiro.java
+package modelo;
+
+public class Tiro {
+    private int posX, posY;
+    private final int velocidade = 7; // Aumentei a velocidade para tiros mais rápidos
+
+    public Tiro(int posX, int posY) {
+        this.posX = posX;
+        this.posY = posY;
+    }
+
+    public void mover() {
+        posY -= velocidade;
+    }
+
+    public int getPosX() { return posX; }
+    public int getPosY() { return posY; }
+}
+
+
+Estrela.java
+package modelo;
+
+import java.util.Random;
+
+public class Estrela {
+    private int x, y, velocidade;
+
+    public Estrela(int larguraTela) {
+        Random random = new Random();
+        this.x = random.nextInt(larguraTela);
+        this.y = random.nextInt(600); // **Agora ajustado para 600**
+        this.velocidade = 2 + random.nextInt(3);
+    }
+
+    public void mover() {
+        y += velocidade;
+        if (y > 600) y = 0; // **Corrigido para respeitar o novo tamanho da tela**
+    }
+
+    public int getX() { return x; }
+    public int getY() { return y; }
+}
